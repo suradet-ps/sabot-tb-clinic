@@ -287,7 +287,7 @@ pub async fn get_dispensing_history(
         "SELECT \
             DATE_FORMAT(o.vstdate, '%Y-%m-%d') AS vstdate, \
             o.icode, \
-            COALESCE(d.name, o.icode) AS drug_name, \
+            TRIM(CONCAT_WS(' ', COALESCE(d.name, o.icode), d.strength)) AS drug_name, \
             CAST(o.qty AS DOUBLE) AS qty, \
             d.units, \
             CASE o.icode \
