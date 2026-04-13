@@ -132,24 +132,71 @@ pub async fn enroll_patient(pool: &SqlitePool, input: &EnrollmentInput) -> Resul
   let now = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
   let mut tx = pool.begin().await?;
 
-  let patient_id = sqlx::query(
-    "INSERT INTO tb_patients
-             (hn, enrolled_at, enrolled_by, status, tb_type,
-              diagnosis_date, notes, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 'active', ?4, ?5, ?6, ?7, ?8)",
-  )
-  .bind(&input.hn)
-  .bind(&input.treatment_start_date)
-  .bind(&input.enrolled_by)
-  .bind(&input.tb_type)
-  .bind(&input.diagnosis_date)
-  .bind(&input.notes)
-  .bind(&now)
-  .bind(&now)
-  .execute(&mut *tx)
-  .await?
-  .last_insert_rowid();
+  // ── Check whether a row already exists for this HN ───────────────────────
+  let existing: Option<(i64, String)> =
+    sqlx::query_as("SELECT id, status FROM tb_patients WHERE hn = ?")
+      .bind(&input.hn)
+      .fetch_optional(&mut *tx)
+      .await?;
 
+  let patient_id = if let Some((existing_id, existing_status)) = existing {
+    if existing_status == "active" {
+      // Patient is currently under treatment — block re-enrolment
+      return Err(anyhow::anyhow!("ผู้ป่วยรายนี้ยังอยู่ในการรักษา"));
+    }
+
+    // ── RE-ENROLLMENT: patient was previously discharged / completed ──────
+    // 1. Reactivate the patient row with the new enrolment details
+    sqlx::query(
+      "UPDATE tb_patients \
+           SET enrolled_at    = ?1, \
+               enrolled_by    = ?2, \
+               tb_type        = ?3, \
+               diagnosis_date = ?4, \
+               notes          = ?5, \
+               status         = 'active', \
+               updated_at     = ?6 \
+           WHERE hn = ?7",
+    )
+    .bind(&input.treatment_start_date)
+    .bind(&input.enrolled_by)
+    .bind(&input.tb_type)
+    .bind(&input.diagnosis_date)
+    .bind(&input.notes)
+    .bind(&now)
+    .bind(&input.hn)
+    .execute(&mut *tx)
+    .await?;
+
+    // 2. Deactivate all previous treatment plan rows (kept for history)
+    sqlx::query("UPDATE tb_treatment_plans SET is_current = 0 WHERE hn = ?")
+      .bind(&input.hn)
+      .execute(&mut *tx)
+      .await?;
+
+    existing_id
+  } else {
+    // ── NEW ENROLLMENT: no existing row — plain INSERT ────────────────────
+    sqlx::query(
+      "INSERT INTO tb_patients \
+               (hn, enrolled_at, enrolled_by, status, tb_type, \
+                diagnosis_date, notes, created_at, updated_at) \
+           VALUES (?1, ?2, ?3, 'active', ?4, ?5, ?6, ?7, ?8)",
+    )
+    .bind(&input.hn)
+    .bind(&input.treatment_start_date)
+    .bind(&input.enrolled_by)
+    .bind(&input.tb_type)
+    .bind(&input.diagnosis_date)
+    .bind(&input.notes)
+    .bind(&now)
+    .bind(&now)
+    .execute(&mut *tx)
+    .await?
+    .last_insert_rowid()
+  };
+
+  // Create fresh intensive + continuation plan rows (shared by both paths)
   let start_date = NaiveDate::parse_from_str(&input.treatment_start_date, "%Y-%m-%d")
     .unwrap_or_else(|_| Local::now().date_naive());
 

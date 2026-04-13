@@ -5,6 +5,7 @@ import DischargedView from '@/views/DischargedView.vue'
 import PatientDetailView from '@/views/PatientDetailView.vue'
 import ReportsView from '@/views/ReportsView.vue'
 import SettingsView from '@/views/SettingsView.vue'
+import AppointmentsView from '@/views/AppointmentsView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -30,6 +31,12 @@ const router = createRouter({
       name: 'discharged',
       component: DischargedView,
       meta: { title: 'ผู้ป่วยจำหน่ายแล้ว' },
+    },
+    {
+      path: '/appointments',
+      name: 'appointments',
+      component: AppointmentsView,
+      meta: { title: 'การนัดหมาย' },
     },
     {
       path: '/patient/:hn',

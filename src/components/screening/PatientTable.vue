@@ -58,17 +58,22 @@ const sortedResults = computed<PatientDrugRecord[]>(() => {
 })
 
 // ── Selection helpers ─────────────────────────────────────────────────────────
-const nonEnrolledRows = computed(() => store.results.filter((r) => !r.is_enrolled))
+// Selectable = not enrolled, OR enrolled but already discharged (non-active status)
+const selectableRows = computed(() =>
+  store.results.filter(
+    (r) => !r.is_enrolled || (r.patient_status && r.patient_status !== 'active'),
+  ),
+)
 
 const allSelected = computed(
   () =>
-    nonEnrolledRows.value.length > 0 &&
-    nonEnrolledRows.value.every((r) => store.selectedHns.has(r.hn)),
+    selectableRows.value.length > 0 &&
+    selectableRows.value.every((r) => store.selectedHns.has(r.hn)),
 )
 
 const someSelected = computed(
   () =>
-    nonEnrolledRows.value.some((r) => store.selectedHns.has(r.hn)) && !allSelected.value,
+    selectableRows.value.some((r) => store.selectedHns.has(r.hn)) && !allSelected.value,
 )
 
 // Sync indeterminate state — cannot be set via HTML attribute, must be a JS property
@@ -82,7 +87,7 @@ function toggleAll() {
   if (allSelected.value) {
     store.clearSelection()
   } else {
-    nonEnrolledRows.value.forEach((r) => {
+    selectableRows.value.forEach((r) => {
       if (!store.selectedHns.has(r.hn)) {
         store.toggleSelect(r.hn)
       }
@@ -91,7 +96,8 @@ function toggleAll() {
 }
 
 function toggleRow(row: PatientDrugRecord) {
-  if (row.is_enrolled) return
+  // Actively enrolled patients cannot be re-enrolled; block only those
+  if (row.is_enrolled && (!row.patient_status || row.patient_status === 'active')) return
   store.toggleSelect(row.hn)
 }
 
@@ -124,7 +130,7 @@ function sexLabel(sex: string | null | undefined): string {
               ref="headerCheckbox"
               type="checkbox"
               :checked="allSelected"
-              :disabled="nonEnrolledRows.length === 0 || store.isLoading"
+              :disabled="selectableRows.length === 0 || store.isLoading"
               @change="toggleAll"
               title="เลือก / ยกเลิกทั้งหมด"
             />
@@ -252,8 +258,9 @@ function sexLabel(sex: string | null | undefined): string {
           v-for="row in sortedResults"
           :key="row.hn"
           :class="{
-            'row-enrolled': row.is_enrolled,
-            'row-selected': !row.is_enrolled && store.selectedHns.has(row.hn),
+            'row-enrolled': row.is_enrolled && (!row.patient_status || row.patient_status === 'active'),
+            'row-discharged-selectable': row.is_enrolled && row.patient_status && row.patient_status !== 'active',
+            'row-selected': store.selectedHns.has(row.hn) && (!row.is_enrolled || (row.patient_status && row.patient_status !== 'active')),
           }"
           @click="toggleRow(row)"
         >
@@ -261,7 +268,7 @@ function sexLabel(sex: string | null | undefined): string {
             <input
               type="checkbox"
               :checked="store.selectedHns.has(row.hn)"
-              :disabled="row.is_enrolled"
+              :disabled="row.is_enrolled && (!row.patient_status || row.patient_status === 'active')"
               @click.stop
               @change="store.toggleSelect(row.hn)"
             />
@@ -381,7 +388,7 @@ tbody tr {
   transition: background 0.1s;
 }
 
-tbody tr:hover:not(.row-enrolled) {
+tbody tr:hover:not(.row-enrolled):not(.row-discharged-selectable) {
   background: var(--color-bg-alt);
 }
 
@@ -392,6 +399,19 @@ tbody tr.row-selected {
 tbody tr.row-enrolled {
   opacity: 0.6;
   cursor: default;
+}
+
+/* Discharged patients are selectable for re-enrollment */
+tbody tr.row-discharged-selectable {
+  cursor: pointer;
+}
+
+tbody tr.row-discharged-selectable:hover:not(.row-selected) {
+  background: rgba(221, 91, 0, 0.05);
+}
+
+tbody tr.row-discharged-selectable.row-selected {
+  background: rgba(221, 91, 0, 0.09);
 }
 
 /* ── Cells ───────────────────────────────────────────────────────────────────── */

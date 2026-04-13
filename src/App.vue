@@ -3,13 +3,21 @@ import { onMounted } from 'vue'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import { useAlertStore } from '@/stores/alerts'
 import { useSettingsStore } from '@/stores/settings'
+import { useAppointmentsStore } from '@/stores/appointments'
 
 const alertStore = useAlertStore()
 const settingsStore = useSettingsStore()
+const appointmentsStore = useAppointmentsStore()
 
-onMounted(() => {
+onMounted(async () => {
+  // Load persisted config first so the Settings form is pre-filled
+  await settingsStore.loadSavedConfig()
+  // Check whether the backend already has an active connection
+  await settingsStore.checkConnection()
+  // Start alert polling loop
   alertStore.startAutoRefresh()
-  settingsStore.checkConnection()
+  // Fetch upcoming appointments (silently no-ops when not connected)
+  appointmentsStore.fetchAppointments()
 })
 </script>
 

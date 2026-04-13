@@ -5,6 +5,7 @@ import {
   Microscope,
   Users,
   UserMinus,
+  CalendarDays,
   BarChart2,
   Settings,
   Database,
@@ -13,22 +14,26 @@ import {
 import TbClinicLogo from '@/components/shared/TbClinicLogo.vue'
 import { useAlertStore } from '@/stores/alerts'
 import { useSettingsStore } from '@/stores/settings'
+import { useAppointmentsStore } from '@/stores/appointments'
 
 const route = useRoute()
 const alertStore = useAlertStore()
 const settingsStore = useSettingsStore()
+const appointmentsStore = useAppointmentsStore()
 
 interface NavItem {
   path: string
   label: string
   icon: object
   showAlerts?: boolean
+  showApptCount?: boolean
 }
 
 const navItems: NavItem[] = [
   { path: '/screening', label: 'คัดกรองผู้ป่วย', icon: Microscope },
   { path: '/active', label: 'ผู้ป่วยในการรักษา', icon: Users, showAlerts: true },
   { path: '/discharged', label: 'การจำหน่ายผู้ป่วย', icon: UserMinus },
+  { path: '/appointments', label: 'การนัดหมาย', icon: CalendarDays, showApptCount: true },
   { path: '/reports', label: 'รายงาน', icon: BarChart2 },
   { path: '/settings', label: 'ตั้งค่า', icon: Settings },
 ]
@@ -40,6 +45,7 @@ function isActive(path: string): boolean {
 
 const redCount = computed(() => alertStore.redCount)
 const isConnected = computed(() => settingsStore.isConnected)
+const todayApptCount = computed(() => appointmentsStore.todayAppointments.length)
 </script>
 
 <template>
@@ -74,6 +80,13 @@ const isConnected = computed(() => settingsStore.isConnected)
           :title="`${redCount} การแจ้งเตือนเร่งด่วน`"
         >
           {{ redCount > 99 ? '99+' : redCount }}
+        </span>
+        <span
+          v-if="item.showApptCount && todayApptCount > 0"
+          class="nav-badge nav-badge--teal"
+          :title="`${todayApptCount} นัดวันนี้`"
+        >
+          {{ todayApptCount > 99 ? '99+' : todayApptCount }}
         </span>
       </RouterLink>
     </nav>
@@ -244,6 +257,10 @@ const isConnected = computed(() => settingsStore.isConnected)
   justify-content: center;
   letter-spacing: 0;
   line-height: 1;
+}
+
+.nav-badge--teal {
+  background: var(--color-teal);
 }
 
 /* ── Spacer ── */

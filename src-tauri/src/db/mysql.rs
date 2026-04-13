@@ -1,5 +1,7 @@
 use crate::models::dispensing::DispensingRecord;
-use crate::models::patient::{PatientDemographics, PatientDrugRecord, SearchFilters};
+use crate::models::patient::{
+  AppointmentRecord, PatientDemographics, PatientDrugRecord, SearchFilters,
+};
 use anyhow::Result;
 use sqlx::MySqlPool;
 use std::collections::HashMap;
@@ -349,4 +351,31 @@ pub async fn was_ethambutol_dispensed_recently(
   .await?;
 
   Ok(count > 0)
+}
+
+/// Fetch upcoming TB clinic appointments from HOSxP `oapp` (clinic code `009`).
+///
+/// Returns every appointment whose `nextdate` falls between today and
+/// `today + days_ahead` days (inclusive), ordered by date ascending.
+///
+/// Join with `patient` to provide the human-readable name.
+pub async fn get_tb_appointments(
+  pool: &MySqlPool,
+  days_ahead: i64,
+) -> Result<Vec<AppointmentRecord>> {
+  sqlx::query_as::<_, AppointmentRecord>(
+    "SELECT \
+            a.hn, \
+            CONCAT(COALESCE(p.pname, ''), p.fname, ' ', p.lname) AS full_name, \
+            DATE_FORMAT(a.nextdate, '%Y-%m-%d') AS nextdate \
+        FROM oapp a \
+        JOIN patient p ON a.hn = p.hn \
+        WHERE a.clinic = '009' \
+          AND a.nextdate BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL ? DAY) \
+        ORDER BY a.nextdate ASC",
+  )
+  .bind(days_ahead)
+  .fetch_all(pool)
+  .await
+  .map_err(anyhow::Error::from)
 }

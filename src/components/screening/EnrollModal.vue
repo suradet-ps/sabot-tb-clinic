@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { X, UserPlus, CheckCircle, AlertCircle, Loader2 } from 'lucide-vue-next'
 import { usePatientStore } from '@/stores/patient'
 import { useSettingsStore } from '@/stores/settings'
@@ -28,6 +28,14 @@ const notes = ref('')
 const isSubmitting = ref(false)
 const error = ref<string | null>(null)
 const success = ref(false)
+
+// ── Re-enrollment detection ───────────────────────────────────────────────────
+const reenrollCount = computed(() =>
+  props.patients.filter(
+    (p) => p.is_enrolled && p.patient_status && p.patient_status !== 'active',
+  ).length,
+)
+const hasReenrollPatients = computed(() => reenrollCount.value > 0)
 
 // ── Reset form whenever the modal opens ───────────────────────────────────────
 watch(
@@ -117,6 +125,15 @@ async function submit() {
               </span>
               <span v-if="patients.length > 3" class="patient-chip patient-chip--more">
                 +{{ patients.length - 3 }} รายอื่น
+              </span>
+            </div>
+
+            <!-- Re-enrollment warning -->
+            <div v-if="hasReenrollPatients" class="reenroll-warning">
+              <span class="reenroll-warning-icon">⚠️</span>
+              <span>
+                มีผู้ป่วย <strong>{{ reenrollCount }} ราย</strong>
+                เคยรักษาในคลินิกมาก่อน — ระบบจะสร้างแผนการรักษาใหม่โดยเก็บประวัติเดิมไว้
               </span>
             </div>
 
@@ -510,6 +527,33 @@ async function submit() {
 
 .alert-icon {
   flex-shrink: 0;
+}
+
+/* ── Re-enrollment warning ────────────────────────────────────────────────────── */
+.reenroll-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(221, 91, 0, 0.2);
+  border-left: 3px solid var(--color-orange);
+  background: rgba(221, 91, 0, 0.06);
+  font-size: 13px;
+  color: var(--color-orange);
+  line-height: 1.5;
+  margin-top: 10px;
+}
+
+.reenroll-warning-icon {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.reenroll-warning strong {
+  font-weight: 700;
+  color: var(--color-orange);
 }
 
 /* ── Footer ───────────────────────────────────────────────────────────────────── */

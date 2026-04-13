@@ -43,7 +43,11 @@ export const useScreeningStore = defineStore('screening', () => {
   }
 
   const selectedRecords = computed(() =>
-    results.value.filter((r) => selectedHns.value.has(r.hn))
+    results.value.filter(
+      (r) =>
+        selectedHns.value.has(r.hn) &&
+        (!r.is_enrolled || (r.patient_status && r.patient_status !== 'active')),
+    ),
   )
 
   return {

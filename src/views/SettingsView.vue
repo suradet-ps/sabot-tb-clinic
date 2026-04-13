@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import {
   Database,
   Server,
@@ -37,6 +37,15 @@ const mysqlForm = reactive<DbConfig>({ ...settingsStore.dbConfig })
 const testResult = ref<'idle' | 'testing' | 'success' | 'fail'>('idle')
 const testError  = ref('')
 const isSaving   = ref(false)
+const savedSuccess = ref(false)
+
+// Keep the form in sync with the store — handles loadSavedConfig() being called
+// after this component mounts (e.g. navigating to /settings after app init).
+watch(
+  () => settingsStore.dbConfig,
+  (cfg) => { Object.assign(mysqlForm, cfg) },
+  { immediate: true },
+)
 
 async function testConnection() {
   testResult.value = 'testing'
@@ -48,8 +57,13 @@ async function testConnection() {
 
 async function saveAndConnect() {
   isSaving.value = true
+  savedSuccess.value = false
   try {
     await settingsStore.connect({ ...mysqlForm })
+    if (settingsStore.isConnected) {
+      savedSuccess.value = true
+      setTimeout(() => { savedSuccess.value = false }, 3000)
+    }
   } finally {
     isSaving.value = false
   }
@@ -271,8 +285,20 @@ async function downloadBackup() {
                 บันทึกและเชื่อมต่อ
               </button>
 
-              <!-- Inline test feedback -->
-              <span v-if="testResult === 'success'" class="test-result test-success">
+              <button
+                class="btn-ghost-danger"
+                :disabled="isSaving"
+                @click="settingsStore.deleteSavedConfig()"
+                title="ล้างการตั้งค่าที่บันทึกและคืนค่าเริ่มต้น"
+              >
+                ลบการตั้งค่าที่บันทึก
+              </button>
+
+              <span v-if="savedSuccess" class="test-result test-success">
+                <CheckCircle :size="14" />
+                บันทึกการตั้งค่าแล้ว
+              </span>
+              <span v-else-if="testResult === 'success'" class="test-result test-success">
                 <CheckCircle :size="14" />
                 เชื่อมต่อสำเร็จ
               </span>
@@ -780,6 +806,34 @@ async function downloadBackup() {
 }
 
 /* ── Test-result inline feedback ────────────────────────────────────── */
+/* ── Ghost danger button (delete config) ───────────────────────────── */
+.btn-ghost-danger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: #b91c1c;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+
+.btn-ghost-danger:hover:not(:disabled) {
+  background: rgba(185, 28, 28, 0.07);
+  color: #991b1b;
+}
+
+.btn-ghost-danger:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .test-result {
   display: inline-flex;
   align-items: center;

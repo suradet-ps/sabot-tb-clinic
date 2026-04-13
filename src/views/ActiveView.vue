@@ -507,10 +507,6 @@ const isInitialLoad = computed(
 }
 
 /* ── Patient grid ── */
-.patient-grid {
-  /* wrapper keeps the view-root padding context */
-}
-
 .patient-grid-inner {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));

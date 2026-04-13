@@ -351,7 +351,6 @@ thead th {
 
 /* Column widths */
 .th-date  { width: 110px; }
-.th-name  { /* flex */ }
 .th-class { width: 90px; }
 .th-qty   { width: 110px; }
 
@@ -395,11 +394,7 @@ td {
   font-variant-numeric: tabular-nums;
 }
 
-/* Drug name cell */
-.td-name {
-  /* allow wrapping for long names */
-}
-
+/* Drug name cell — no additional styles needed; wrapping is default block behaviour */
 .drug-name {
   font-size: 13px;
   color: var(--color-text);

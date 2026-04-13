@@ -688,11 +688,6 @@ function onKeydown(e: KeyboardEvent) {
   background: rgba(0, 0, 0, 0.04);
 }
 
-/* Priority side effect row styling */
-.checkbox-item-priority {
-  /* subtle teal accent for E drug row */
-}
-
 .checkbox-item-checked-priority {
   background: rgba(221, 91, 0, 0.06);
   outline: 1px solid rgba(221, 91, 0, 0.2);
