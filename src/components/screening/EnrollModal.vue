@@ -96,6 +96,10 @@ async function submit() {
     isSubmitting.value = false
   }
 }
+
+function unfocus(e: Event) {
+  (e.target as HTMLElement)?.blur()
+}
 </script>
 
 <template>
@@ -207,6 +211,7 @@ async function submit() {
                 class="form-input"
                 placeholder="ชื่อผู้บันทึก (ไม่จำเป็น)"
                 autocomplete="off"
+                @change="unfocus"
               />
               <datalist id="staff-datalist">
                 <option
