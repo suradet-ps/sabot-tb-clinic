@@ -1,7 +1,7 @@
 {
   "name": "sabot-tb-clinic",
   "private": true,
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "TB Clinic Management System for Sabot Hospital",
   "type": "module",
   "scripts": {
