@@ -353,16 +353,16 @@ async fn geocode_address_with_rate_limit(address: &str) -> Result<(f64, f64), an
     for attempt in 0..3 {
       tokio::time::sleep(Duration::from_secs(1)).await;
 
-      let response = client
-        .get(url)
-        .query(&[
+      let url_with_params = reqwest::Url::parse_with_params(
+        url,
+        &[
           ("q", candidate.as_str()),
           ("format", "jsonv2"),
           ("limit", "1"),
           ("countrycodes", "th"),
-        ])
-        .send()
-        .await;
+        ],
+      )?;
+      let response = client.get(url_with_params).send().await;
 
       match response {
         Ok(result) => {
