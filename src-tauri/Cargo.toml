@@ -1,6 +1,6 @@
 [package]
 name = "sabot-tb-clinic"
-version = "0.1.4"
+version = "0.1.5"
 description = "TB Clinic Management System for Sabot Hospital"
 authors = ["Suradet Pratomsak"]
 license = "MIT"
