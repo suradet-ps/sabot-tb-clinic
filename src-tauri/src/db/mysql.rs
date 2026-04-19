@@ -52,10 +52,10 @@ fn icode_to_class(icode: &str) -> Option<&'static str> {
 fn drug_classes_from_icode_csv(csv: &str) -> Vec<String> {
   let mut seen = Vec::<&'static str>::new();
   for code in csv.split(',') {
-    if let Some(cls) = icode_to_class(code.trim()) {
-      if !seen.contains(&cls) {
-        seen.push(cls);
-      }
+    if let Some(cls) = icode_to_class(code.trim())
+      && !seen.contains(&cls)
+    {
+      seen.push(cls);
     }
   }
   seen.into_iter().map(String::from).collect()

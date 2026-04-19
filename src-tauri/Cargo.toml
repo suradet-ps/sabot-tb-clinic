@@ -22,7 +22,8 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2.7.0"
+tauri-plugin-opener = "2.5.3"
 sqlx = { version = "0.8", features = ["mysql", "sqlite", "runtime-tokio", "chrono"] }
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }

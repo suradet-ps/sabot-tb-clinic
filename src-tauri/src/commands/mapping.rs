@@ -272,14 +272,13 @@ async fn geocode_patient_core(
   let normalized_address = normalize_address(&raw_address);
   let existing = db::sqlite::get_patient_location(sqlite, &patient.hn).await?;
 
-  if let Some(location) = &existing {
-    if location.geocode_status == "success"
-      && location.lat.is_some()
-      && location.lng.is_some()
-      && location.normalized_address.as_deref() == Some(normalized_address.as_str())
-    {
-      return build_single_mapping_row(patient, location.clone(), demographics.clone());
-    }
+  if let Some(location) = &existing
+    && location.geocode_status == "success"
+    && location.lat.is_some()
+    && location.lng.is_some()
+    && location.normalized_address.as_deref() == Some(normalized_address.as_str())
+  {
+    return build_single_mapping_row(patient, location.clone(), demographics.clone());
   }
 
   let previous_attempts = existing
@@ -402,10 +401,10 @@ fn normalize_address(raw_address: &str) -> String {
     .trim()
     .to_string();
 
-  if collapsed.contains("ประเทศไทย") || collapsed.to_lowercase().contains("thailand")
+  if collapsed.is_empty()
+    || collapsed.contains("ประเทศไทย")
+    || collapsed.to_lowercase().contains("thailand")
   {
-    collapsed
-  } else if collapsed.is_empty() {
     collapsed
   } else {
     format!("{collapsed} ประเทศไทย")

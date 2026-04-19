@@ -16,6 +16,7 @@ import {
   WifiOff,
 } from 'lucide-vue-next'
 import { invoke } from '@tauri-apps/api/core'
+import { save as saveDialog } from '@tauri-apps/plugin-dialog'
 import { useSettingsStore, type DbConfig } from '@/stores/settings'
 import DrugChip from '@/components/shared/DrugChip.vue'
 
@@ -38,6 +39,8 @@ const testResult = ref<'idle' | 'testing' | 'success' | 'fail'>('idle')
 const testError  = ref('')
 const isSaving   = ref(false)
 const savedSuccess = ref(false)
+const settingsSaveError = ref<string | null>(null)
+const settingsSaveSuccess = ref<string | null>(null)
 
 // Keep the form in sync with the store — handles loadSavedConfig() being called
 // after this component mounts (e.g. navigating to /settings after app init).
@@ -46,6 +49,11 @@ watch(
   (cfg) => { Object.assign(mysqlForm, cfg) },
   { immediate: true },
 )
+
+watch(activeSection, () => {
+  settingsSaveError.value = null
+  settingsSaveSuccess.value = null
+})
 
 async function testConnection() {
   testResult.value = 'testing'
@@ -58,6 +66,7 @@ async function testConnection() {
 async function saveAndConnect() {
   isSaving.value = true
   savedSuccess.value = false
+  testResult.value = 'idle'
   try {
     await settingsStore.connect({ ...mysqlForm })
     if (settingsStore.isConnected) {
@@ -67,6 +76,21 @@ async function saveAndConnect() {
   } finally {
     isSaving.value = false
   }
+}
+
+function showSettingsSaved(message: string) {
+  settingsSaveError.value = null
+  settingsSaveSuccess.value = message
+  setTimeout(() => {
+    if (settingsSaveSuccess.value === message) {
+      settingsSaveSuccess.value = null
+    }
+  }, 2500)
+}
+
+function showSettingsSaveError(error: unknown) {
+  settingsSaveSuccess.value = null
+  settingsSaveError.value = String(error)
 }
 
 // ── Drug codes table (read-only) ─────────────────────────────────────
@@ -106,28 +130,53 @@ function removeDrugCode(cls: 'H' | 'R' | 'E' | 'Z', idx: number) {
 // ── Regimen management ───────────────────────────────────────────────
 const newRegimen = ref('')
 
-function addRegimen() {
-  const reg = newRegimen.value.trim().toUpperCase()
-  if (reg && !settingsStore.regimens.includes(reg)) {
-    settingsStore.regimens.push(reg)
-    newRegimen.value = ''
+async function addRegimen() {
+  try {
+    const changed = await settingsStore.addRegimen(newRegimen.value)
+    if (changed) {
+      newRegimen.value = ''
+      showSettingsSaved('บันทึกสูตรการรักษาแล้ว')
+    }
+  } catch (e) {
+    showSettingsSaveError(e)
+  }
+}
+
+async function removeRegimen(regimen: string) {
+  try {
+    const changed = await settingsStore.removeRegimen(regimen)
+    if (changed) {
+      showSettingsSaved('ลบสูตรการรักษาแล้ว')
+    }
+  } catch (e) {
+    showSettingsSaveError(e)
   }
 }
 
 // ── Staff names ──────────────────────────────────────────────────────
 const newStaff = ref('')
 
-function addStaff() {
-  const name = newStaff.value.trim()
-  if (name && !settingsStore.staffNames.includes(name)) {
-    settingsStore.staffNames.push(name)
-    newStaff.value = ''
+async function addStaff() {
+  try {
+    const changed = await settingsStore.addStaffName(newStaff.value)
+    if (changed) {
+      newStaff.value = ''
+      showSettingsSaved('บันทึกรายชื่อผู้ใช้งานแล้ว')
+    }
+  } catch (e) {
+    showSettingsSaveError(e)
   }
 }
 
-function removeStaff(name: string) {
-  const idx = settingsStore.staffNames.indexOf(name)
-  if (idx >= 0) settingsStore.staffNames.splice(idx, 1)
+async function removeStaff(name: string) {
+  try {
+    const changed = await settingsStore.removeStaffName(name)
+    if (changed) {
+      showSettingsSaved('ลบรายชื่อผู้ใช้งานแล้ว')
+    }
+  } catch (e) {
+    showSettingsSaveError(e)
+  }
 }
 
 // ── Backup ───────────────────────────────────────────────────────────
@@ -140,7 +189,20 @@ async function downloadBackup() {
   backupError.value  = null
   backupSuccess.value = false
   try {
-    await invoke('backup_sqlite')
+    const targetPath = await saveDialog({
+      defaultPath: `tb-clinic-backup-${new Date().toISOString().slice(0, 10)}.db`,
+      filters: [
+        {
+          name: 'SQLite Database',
+          extensions: ['db', 'sqlite', 'sqlite3'],
+        },
+      ],
+    })
+    if (!targetPath) {
+      return
+    }
+
+    await invoke('backup_sqlite', { targetPath })
     backupSuccess.value = true
     setTimeout(() => { backupSuccess.value = false }, 4000)
   } catch (e) {
@@ -309,10 +371,7 @@ async function downloadBackup() {
             </div>
 
             <!-- Store-level error shown after failed save+connect -->
-            <p
-              v-if="settingsStore.connectionError && !settingsStore.isConnected && testResult === 'idle'"
-              class="error-note"
-            >
+            <p v-if="settingsStore.connectionError && testResult === 'idle'" class="error-note">
               ข้อผิดพลาด: {{ settingsStore.connectionError }}
             </p>
           </div>
@@ -386,7 +445,7 @@ async function downloadBackup() {
 
               <div v-if="settingsStore.regimens.length" class="regimen-list">
                 <div
-                  v-for="(reg, idx) in settingsStore.regimens"
+                  v-for="reg in settingsStore.regimens"
                   :key="reg"
                   class="regimen-item"
                 >
@@ -394,7 +453,7 @@ async function downloadBackup() {
                   <button
                     class="staff-delete"
                     :disabled="settingsStore.regimens.length <= 1"
-                    @click="settingsStore.regimens.splice(idx, 1)"
+                    @click="removeRegimen(reg)"
                     :title="`ลบสูตร ${reg}`"
                   >
                     <Trash2 :size="14" />
@@ -414,6 +473,14 @@ async function downloadBackup() {
                   เพิ่มสูตร
                 </button>
               </div>
+
+              <span v-if="settingsSaveSuccess" class="test-result test-success">
+                <CheckCircle :size="14" />
+                {{ settingsSaveSuccess }}
+              </span>
+              <p v-if="settingsSaveError" class="error-note">
+                บันทึกสูตรการรักษาไม่สำเร็จ: {{ settingsSaveError }}
+              </p>
             </div>
           </div>
         </template>
@@ -469,6 +536,14 @@ async function downloadBackup() {
                 เพิ่ม
               </button>
             </div>
+
+            <span v-if="settingsSaveSuccess" class="test-result test-success">
+              <CheckCircle :size="14" />
+              {{ settingsSaveSuccess }}
+            </span>
+            <p v-if="settingsSaveError" class="error-note">
+              บันทึกรายชื่อผู้ใช้งานไม่สำเร็จ: {{ settingsSaveError }}
+            </p>
           </div>
         </template>
 
@@ -479,7 +554,7 @@ async function downloadBackup() {
           <div class="settings-card">
             <h2 class="card-title">สำรองข้อมูล SQLite</h2>
             <p class="card-subtitle">
-              ดาวน์โหลดและบันทึกไฟล์ฐานข้อมูลสำหรับการสำรองข้อมูล
+              ดาวน์โหลดและบันทึกไฟล์ฐานข้อมูลสำหรับการสำรองข้อมูล โดยเลือกตำแหน่งปลายทางก่อนทุกครั้ง
             </p>
 
             <div class="backup-body">
@@ -507,7 +582,7 @@ async function downloadBackup() {
               >
                 <Loader2   v-if="isBackingUp"   :size="14" class="spin" />
                 <Download  v-else               :size="14" />
-                ดาวน์โหลดไฟล์ฐานข้อมูล
+                เลือกตำแหน่งและบันทึกไฟล์ฐานข้อมูล
               </button>
 
               <!-- Success / error feedback -->

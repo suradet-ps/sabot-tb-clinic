@@ -10,6 +10,14 @@ export interface DbConfig {
   password: string
 }
 
+export interface AppConfig extends DbConfig {
+  staff_names: string[]
+  regimens: string[]
+}
+
+const DEFAULT_STAFF_NAMES = ['พยาบาลวิชาชีพ', 'เภสัชกร', 'แพทย์']
+const DEFAULT_REGIMENS = ['2HRZE/4HR', '2HRZE/6HR']
+
 const DEFAULT_CONFIG: DbConfig = {
   host: 'localhost',
   port: 3306,
@@ -24,7 +32,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const isConnecting = ref(false)
   const connectionError = ref<string | null>(null)
 
-  const staffNames = ref<string[]>(['พยาบาลวิชาชีพ', 'เภสัชกร', 'แพทย์'])
+  const staffNames = ref<string[]>([...DEFAULT_STAFF_NAMES])
 
   const drugCodes = ref({
     H: ['1430104'],
@@ -33,7 +41,19 @@ export const useSettingsStore = defineStore('settings', () => {
     Z: ['1000258'],
   })
 
-  const regimens = ref<string[]>(['2HRZE/4HR', '2HRZE/6HR'])
+  const regimens = ref<string[]>([...DEFAULT_REGIMENS])
+
+  function buildAppConfig(): AppConfig {
+    return {
+      ...dbConfig.value,
+      staff_names: [...staffNames.value],
+      regimens: [...regimens.value],
+    }
+  }
+
+  async function saveAllSettings(): Promise<void> {
+    await invoke('save_db_config', { config: buildAppConfig() })
+  }
 
   async function testConnection(config: DbConfig): Promise<boolean> {
     try {
@@ -54,13 +74,12 @@ export const useSettingsStore = defineStore('settings', () => {
       isConnecting.value = true
       connectionError.value = null
       await invoke('connect_mysql', { config })
-      dbConfig.value = config
+      dbConfig.value = { ...config }
       isConnected.value = true
-      // Persist settings after every successful connection
       try {
-        await invoke('save_db_config', { config })
+        await saveAllSettings()
       } catch (saveErr) {
-        console.warn('Could not persist DB config:', saveErr)
+        connectionError.value = `เชื่อมต่อสำเร็จ แต่บันทึกการตั้งค่าไม่สำเร็จ: ${String(saveErr)}`
       }
     } catch (e) {
       connectionError.value = String(e)
@@ -86,12 +105,20 @@ export const useSettingsStore = defineStore('settings', () => {
    */
   async function loadSavedConfig(): Promise<void> {
     try {
-      const saved = await invoke<DbConfig | null>('load_db_config')
+      const saved = await invoke<AppConfig | null>('load_db_config')
       if (saved) {
-        dbConfig.value = saved
+        dbConfig.value = {
+          host: saved.host,
+          port: saved.port,
+          database: saved.database,
+          username: saved.username,
+          password: saved.password,
+        }
+        staffNames.value = saved.staff_names.length ? saved.staff_names : [...DEFAULT_STAFF_NAMES]
+        regimens.value = saved.regimens.length ? saved.regimens : [...DEFAULT_REGIMENS]
       }
-    } catch {
-      // Silent — no config file yet or backend not ready
+    } catch (e) {
+      console.warn('Could not load saved config:', e)
     }
   }
 
@@ -104,8 +131,81 @@ export const useSettingsStore = defineStore('settings', () => {
     } catch (e) {
       console.warn('Could not delete saved config:', e)
     } finally {
-      // Always reset in-memory state regardless of whether the backend call succeeded
       dbConfig.value = { ...DEFAULT_CONFIG }
+      staffNames.value = [...DEFAULT_STAFF_NAMES]
+      regimens.value = [...DEFAULT_REGIMENS]
+    }
+  }
+
+  async function addStaffName(name: string): Promise<boolean> {
+    const trimmedName = name.trim()
+    if (!trimmedName || staffNames.value.includes(trimmedName)) {
+      return false
+    }
+
+    const previous = [...staffNames.value]
+    staffNames.value = [...previous, trimmedName]
+    try {
+      await saveAllSettings()
+      return true
+    } catch (e) {
+      staffNames.value = previous
+      throw e
+    }
+  }
+
+  async function removeStaffName(name: string): Promise<boolean> {
+    const previous = [...staffNames.value]
+    const next = previous.filter((item) => item !== name)
+    if (next.length === previous.length) {
+      return false
+    }
+
+    staffNames.value = next
+    try {
+      await saveAllSettings()
+      return true
+    } catch (e) {
+      staffNames.value = previous
+      throw e
+    }
+  }
+
+  async function addRegimen(name: string): Promise<boolean> {
+    const regimen = name.trim().toUpperCase()
+    if (!regimen || regimens.value.includes(regimen)) {
+      return false
+    }
+
+    const previous = [...regimens.value]
+    regimens.value = [...previous, regimen]
+    try {
+      await saveAllSettings()
+      return true
+    } catch (e) {
+      regimens.value = previous
+      throw e
+    }
+  }
+
+  async function removeRegimen(name: string): Promise<boolean> {
+    if (regimens.value.length <= 1) {
+      return false
+    }
+
+    const previous = [...regimens.value]
+    const next = previous.filter((item) => item !== name)
+    if (next.length === previous.length) {
+      return false
+    }
+
+    regimens.value = next
+    try {
+      await saveAllSettings()
+      return true
+    } catch (e) {
+      regimens.value = previous
+      throw e
     }
   }
 
@@ -120,7 +220,12 @@ export const useSettingsStore = defineStore('settings', () => {
     testConnection,
     connect,
     checkConnection,
+    saveAllSettings,
     loadSavedConfig,
     deleteSavedConfig,
+    addStaffName,
+    removeStaffName,
+    addRegimen,
+    removeRegimen,
   }
 })

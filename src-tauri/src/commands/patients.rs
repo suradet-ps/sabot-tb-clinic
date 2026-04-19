@@ -239,29 +239,30 @@ pub(crate) async fn compute_alerts_for_patient(
   let today = Local::now().date_naive();
 
   // 1. Overdue dispensing (> 35 days, not yet lost to follow-up)
-  if let Some(days) = days_since_last {
-    if days > 35 && days <= 60 {
-      alerts.push(PatientAlert {
-        hn: hn.to_string(),
-        alert_type: "overdue".to_string(),
-        severity: "red".to_string(),
-        message: format!("ไม่ได้รับยานาน {} วัน", days),
-        details: None,
-      });
-    }
+  if let Some(days) = days_since_last
+    && days > 35
+    && days <= 60
+  {
+    alerts.push(PatientAlert {
+      hn: hn.to_string(),
+      alert_type: "overdue".to_string(),
+      severity: "red".to_string(),
+      message: format!("ไม่ได้รับยานาน {} วัน", days),
+      details: None,
+    });
   }
 
   // 2. Lost to follow-up (> 60 days)
-  if let Some(days) = days_since_last {
-    if days > 60 {
-      alerts.push(PatientAlert {
-        hn: hn.to_string(),
-        alert_type: "lost_to_followup".to_string(),
-        severity: "red".to_string(),
-        message: format!("ขาดการติดตาม {} วัน", days),
-        details: None,
-      });
-    }
+  if let Some(days) = days_since_last
+    && days > 60
+  {
+    alerts.push(PatientAlert {
+      hn: hn.to_string(),
+      alert_type: "lost_to_followup".to_string(),
+      severity: "red".to_string(),
+      message: format!("ขาดการติดตาม {} วัน", days),
+      details: None,
+    });
   }
 
   // ── Resolve intensive phase end date ───────────────────────────────────────
@@ -284,20 +285,19 @@ pub(crate) async fn compute_alerts_for_patient(
     // 3a. Ethambutol overrun — E was dispensed AFTER the intensive phase end date.
     //     Fires regardless of whether the SQLite plan record has been updated,
     //     because the clinical risk exists whether the record is current or not.
-    if let Some(end_date) = intensive_end_date {
-      if today > end_date {
-        if let Ok(true) = db::mysql::was_ethambutol_dispensed_recently(pool, hn, 30).await {
-          alerts.push(PatientAlert {
-            hn: hn.to_string(),
-            alert_type: "ethambutol_overrun".to_string(),
-            severity: "red".to_string(),
-            message: "ได้รับ Ethambutol เกินระยะ Intensive Phase".to_string(),
-            details: intensive_end_str
-              .as_deref()
-              .map(|s| format!("ระยะ Intensive สิ้นสุด: {}", s)),
-          });
-        }
-      }
+    if let Some(end_date) = intensive_end_date
+      && today > end_date
+      && let Ok(true) = db::mysql::was_ethambutol_dispensed_recently(pool, hn, 30).await
+    {
+      alerts.push(PatientAlert {
+        hn: hn.to_string(),
+        alert_type: "ethambutol_overrun".to_string(),
+        severity: "red".to_string(),
+        message: "ได้รับ Ethambutol เกินระยะ Intensive Phase".to_string(),
+        details: intensive_end_str
+          .as_deref()
+          .map(|s| format!("ระยะ Intensive สิ้นสุด: {}", s)),
+      });
     }
 
     // 3b. Phase-transition check: current SQLite plan is STILL "intensive"
@@ -308,69 +308,65 @@ pub(crate) async fn compute_alerts_for_patient(
     //                                   → "phase_transition" alert (due for switch)
     //       • Z/E NOT dispensed recently → patient evidently already on H+R only
     //                                   → "phase_not_updated" alert (update the record)
-    if let Some(plan) = current_plan {
-      if plan.phase == "intensive" {
-        if let Some(end_date) = intensive_end_date {
-          if today > end_date {
-            // Default to true (conservative: assume still intensive) if MySQL unavailable
-            let ze_recent = db::mysql::was_ze_dispensed_recently(pool, hn, 35)
-              .await
-              .unwrap_or(true);
+    if let Some(plan) = current_plan
+      && plan.phase == "intensive"
+      && let Some(end_date) = intensive_end_date
+      && today > end_date
+    {
+      // Default to true (conservative: assume still intensive) if MySQL unavailable
+      let ze_recent = db::mysql::was_ze_dispensed_recently(pool, hn, 35)
+        .await
+        .unwrap_or(true);
 
-            let (alert_type, message) = if ze_recent {
-              ("phase_transition", "ถึงเวลาเปลี่ยนเป็น Continuation Phase")
-            } else {
-              (
-                "phase_not_updated",
-                "ผู้ป่วยอยู่ในระยะ Continuation แล้ว — กรุณาอัปเดตแผนการรักษาในระบบ",
-              )
-            };
+      let (alert_type, message) = if ze_recent {
+        ("phase_transition", "ถึงเวลาเปลี่ยนเป็น Continuation Phase")
+      } else {
+        (
+          "phase_not_updated",
+          "ผู้ป่วยอยู่ในระยะ Continuation แล้ว — กรุณาอัปเดตแผนการรักษาในระบบ",
+        )
+      };
 
-            alerts.push(PatientAlert {
-              hn: hn.to_string(),
-              alert_type: alert_type.to_string(),
-              severity: "yellow".to_string(),
-              message: message.to_string(),
-              details: intensive_end_str
-                .as_deref()
-                .map(|s| format!("ระยะ Intensive สิ้นสุด: {}", s)),
-            });
-          }
-        }
-      }
+      alerts.push(PatientAlert {
+        hn: hn.to_string(),
+        alert_type: alert_type.to_string(),
+        severity: "yellow".to_string(),
+        message: message.to_string(),
+        details: intensive_end_str
+          .as_deref()
+          .map(|s| format!("ระยะ Intensive สิ้นสุด: {}", s)),
+      });
     }
   } else {
     // No MySQL — fire phase-transition alert based on date alone (conservative).
-    if let Some(plan) = current_plan {
-      if plan.phase == "intensive" {
-        if let Some(end_date) = intensive_end_date {
-          if today > end_date {
-            alerts.push(PatientAlert {
-              hn: hn.to_string(),
-              alert_type: "phase_transition".to_string(),
-              severity: "yellow".to_string(),
-              message: "ถึงเวลาเปลี่ยนเป็น Continuation Phase".to_string(),
-              details: intensive_end_str
-                .as_deref()
-                .map(|s| format!("ระยะ Intensive สิ้นสุด: {}", s)),
-            });
-          }
-        }
-      }
+    if let Some(plan) = current_plan
+      && plan.phase == "intensive"
+      && let Some(end_date) = intensive_end_date
+      && today > end_date
+    {
+      alerts.push(PatientAlert {
+        hn: hn.to_string(),
+        alert_type: "phase_transition".to_string(),
+        severity: "yellow".to_string(),
+        message: "ถึงเวลาเปลี่ยนเป็น Continuation Phase".to_string(),
+        details: intensive_end_str
+          .as_deref()
+          .map(|s| format!("ระยะ Intensive สิ้นสุด: {}", s)),
+      });
     }
   }
 
   // 4. Total treatment duration exceeded
-  if let (Some(cur_month), Some(total)) = (current_month, total_months) {
-    if cur_month > total {
-      alerts.push(PatientAlert {
-        hn: hn.to_string(),
-        alert_type: "treatment_complete".to_string(),
-        severity: "yellow".to_string(),
-        message: "ครบกำหนดระยะการรักษาแล้ว".to_string(),
-        details: None,
-      });
-    }
+  if let (Some(cur_month), Some(total)) = (current_month, total_months)
+    && cur_month > total
+  {
+    alerts.push(PatientAlert {
+      hn: hn.to_string(),
+      alert_type: "treatment_complete".to_string(),
+      severity: "yellow".to_string(),
+      message: "ครบกำหนดระยะการรักษาแล้ว".to_string(),
+      details: None,
+    });
   }
 
   alerts

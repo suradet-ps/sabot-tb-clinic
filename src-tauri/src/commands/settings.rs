@@ -3,6 +3,7 @@ use chrono::Local;
 use serde::{Deserialize, Serialize};
 use sqlx::mysql::MySqlPoolOptions;
 use sqlx::{MySqlPool, SqlitePool};
+use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::State;
 use tokio::sync::Mutex;
@@ -18,6 +19,22 @@ pub struct DbConfig {
   pub database: String,
   pub username: String,
   pub password: String,
+  #[serde(default = "default_staff_names")]
+  pub staff_names: Vec<String>,
+  #[serde(default = "default_regimens")]
+  pub regimens: Vec<String>,
+}
+
+fn default_staff_names() -> Vec<String> {
+  vec![
+    "พยาบาลวิชาชีพ".to_string(),
+    "เภสัชกร".to_string(),
+    "แพทย์".to_string(),
+  ]
+}
+
+fn default_regimens() -> Vec<String> {
+  vec!["2HRZE/4HR".to_string(), "2HRZE/6HR".to_string()]
 }
 
 /// Tauri managed state: an optional live MySQL connection pool protected by an
@@ -71,14 +88,23 @@ pub async fn get_mysql_status(mysql: State<'_, MySqlState>) -> Result<bool, Stri
   Ok(guard.is_some())
 }
 
-/// Return the on-disk path to the SQLite database file (useful for manual
-/// backups or pointing external tools at the file).
+/// Copy the live SQLite database file to the user-selected target path.
 #[tauri::command]
-pub async fn backup_sqlite(app: tauri::AppHandle) -> Result<String, String> {
+pub async fn backup_sqlite(app: tauri::AppHandle, target_path: String) -> Result<(), String> {
   use tauri::Manager;
   let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
-  let db_path = app_data_dir.join("tb_clinic.db");
-  Ok(db_path.to_string_lossy().to_string())
+  let source_path = app_data_dir.join("tb_clinic.db");
+  if !source_path.exists() {
+    return Err("ไม่พบไฟล์ฐานข้อมูล SQLite".to_string());
+  }
+
+  let target_path = PathBuf::from(target_path);
+  if let Some(parent) = target_path.parent() {
+    std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+  }
+
+  std::fs::copy(&source_path, &target_path).map_err(|e| e.to_string())?;
+  Ok(())
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -87,7 +113,7 @@ pub async fn backup_sqlite(app: tauri::AppHandle) -> Result<String, String> {
 
 /// All keys stored in `app_settings` (all fields including password).
 /// SQLite DB lives in the OS-protected app data directory.
-const SETTING_KEYS: [&str; 5] = [
+const REQUIRED_SETTING_KEYS: [&str; 5] = [
   "mysql_host",
   "mysql_port",
   "mysql_database",
@@ -95,19 +121,26 @@ const SETTING_KEYS: [&str; 5] = [
   "mysql_password",
 ];
 
+const STAFF_NAMES_KEY: &str = "staff_names";
+const REGIMENS_KEY: &str = "regimens";
+
 /// Persist all connection fields to the local SQLite `app_settings` table.
 /// Should be called after a successful `connect_mysql`.
 #[tauri::command]
 pub async fn save_db_config(sqlite: State<'_, SqlitePool>, config: DbConfig) -> Result<(), String> {
   let now = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
   let port_str = config.port.to_string();
+  let staff_names = serde_json::to_string(&config.staff_names).map_err(|e| e.to_string())?;
+  let regimens = serde_json::to_string(&config.regimens).map_err(|e| e.to_string())?;
 
-  let fields: [(&str, &str); 5] = [
+  let fields: [(&str, &str); 7] = [
     ("mysql_host", config.host.as_str()),
     ("mysql_port", port_str.as_str()),
     ("mysql_database", config.database.as_str()),
     ("mysql_username", config.username.as_str()),
     ("mysql_password", config.password.as_str()),
+    (STAFF_NAMES_KEY, staff_names.as_str()),
+    (REGIMENS_KEY, regimens.as_str()),
   ];
 
   for (key, value) in &fields {
@@ -137,7 +170,15 @@ pub async fn load_db_config(sqlite: State<'_, SqlitePool>) -> Result<Option<DbCo
 pub async fn delete_db_config(sqlite: State<'_, SqlitePool>) -> Result<(), String> {
   sqlx::query(
     "DELETE FROM app_settings \
-     WHERE key IN ('mysql_host', 'mysql_port', 'mysql_database', 'mysql_username', 'mysql_password')",
+     WHERE key IN (
+       'mysql_host',
+       'mysql_port',
+       'mysql_database',
+       'mysql_username',
+       'mysql_password',
+       'staff_names',
+       'regimens'
+     )",
   )
   .execute(sqlite.inner())
   .await
@@ -156,9 +197,9 @@ pub async fn delete_db_config(sqlite: State<'_, SqlitePool>) -> Result<(), Strin
 /// Returns `Ok(None)` when any of the five keys are absent from `app_settings`.
 pub async fn load_config_from_sqlite(pool: &SqlitePool) -> AnyhowResult<Option<DbConfig>> {
   let mut values: std::collections::HashMap<String, String> =
-    std::collections::HashMap::with_capacity(SETTING_KEYS.len());
+    std::collections::HashMap::with_capacity(REQUIRED_SETTING_KEYS.len());
 
-  for key in SETTING_KEYS {
+  for key in REQUIRED_SETTING_KEYS {
     let value: Option<String> = sqlx::query_scalar("SELECT value FROM app_settings WHERE key = ?")
       .bind(key)
       .fetch_optional(pool)
@@ -177,6 +218,8 @@ pub async fn load_config_from_sqlite(pool: &SqlitePool) -> AnyhowResult<Option<D
     .get("mysql_port")
     .and_then(|v| v.parse().ok())
     .unwrap_or(3306);
+  let staff_names = load_string_list_setting(pool, STAFF_NAMES_KEY, default_staff_names()).await?;
+  let regimens = load_string_list_setting(pool, REGIMENS_KEY, default_regimens()).await?;
 
   Ok(Some(DbConfig {
     host: values.remove("mysql_host").unwrap_or_default(),
@@ -184,5 +227,23 @@ pub async fn load_config_from_sqlite(pool: &SqlitePool) -> AnyhowResult<Option<D
     database: values.remove("mysql_database").unwrap_or_default(),
     username: values.remove("mysql_username").unwrap_or_default(),
     password: values.remove("mysql_password").unwrap_or_default(),
+    staff_names,
+    regimens,
   }))
+}
+
+async fn load_string_list_setting(
+  pool: &SqlitePool,
+  key: &str,
+  default: Vec<String>,
+) -> AnyhowResult<Vec<String>> {
+  let value: Option<String> = sqlx::query_scalar("SELECT value FROM app_settings WHERE key = ?")
+    .bind(key)
+    .fetch_optional(pool)
+    .await?;
+
+  match value {
+    Some(raw) => serde_json::from_str(&raw).or(Ok(default)),
+    None => Ok(default),
+  }
 }

@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Capability for the main and splashscreen windows","local":true,"windows":["main","splashscreen"],"permissions":["core:default","opener:default","core:window:allow-show"]}}
+{"default":{"identifier":"default","description":"Capability for the main and splashscreen windows","local":true,"windows":["main","splashscreen"],"permissions":["core:default","dialog:default","opener:default","core:window:allow-show"]}}
