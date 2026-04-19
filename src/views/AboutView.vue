@@ -50,7 +50,7 @@ interface InfoItem {
 
 const infoItems: InfoItem[] = [
   { label: 'โปรแกรม',           value: 'TB Clinic Management System' },
-  { label: 'เวอร์ชัน',          value: '0.1.3' },
+  { label: 'เวอร์ชัน',          value: '0.1.4' },
   { label: 'พัฒนาโดย',          value: 'ทีมเภสัชกรรม โรงพยาบาลสระโบสถ์' },
   { label: 'แพลตฟอร์ม',         value: 'Tauri 2.5 + Vue 3.5' },
   { label: 'ฐานข้อมูลภายในเครื่อง', value: 'SQLite' },
