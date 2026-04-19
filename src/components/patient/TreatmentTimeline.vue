@@ -158,6 +158,27 @@ const endLabel = computed(() =>
   overallEnd.value ? toThaiDate(overallEnd.value.toISOString().slice(0, 10)) : '',
 )
 
+// Boundary between phases (intensive end / continuation start)
+const showBoundary = computed(() => intensiveInfo.value !== null && continuationInfo.value !== null)
+
+const boundaryDate = computed(() => {
+  if (intensiveInfo.value) return intensiveInfo.value.end
+  if (continuationInfo.value) return continuationInfo.value.start
+  return null
+})
+
+const boundaryPct = computed(() =>
+  boundaryDate.value ? pctFromDate(boundaryDate.value) : null
+)
+
+const boundaryPctClamped = computed(() =>
+  boundaryPct.value !== null ? Math.max(1, Math.min(99, boundaryPct.value)) : null
+)
+
+const boundaryLabel = computed(() =>
+  boundaryDate.value ? toThaiDate(boundaryDate.value.toISOString().slice(0, 10)) : ''
+)
+
 // ── Tooltip for each followup dot ─────────────────────────────────────────
 
 function dotTooltip(f: Followup): string {
@@ -216,6 +237,17 @@ function dotTooltip(f: Followup): string {
 
         <!-- ── Overlay layer: dots + today marker ──────────────── -->
         <div class="overlay-layer" aria-hidden="true">
+          <!-- Phase boundary label -->
+          <div
+            v-if="showBoundary && boundaryPctClamped !== null"
+            class="boundary-label"
+            :style="{ left: boundaryPctClamped + '%' }"
+            role="img"
+            aria-label="วันที่เปลี่ยนเฟส"
+          >
+            <span>{{ boundaryLabel }}</span>
+          </div>
+
           <!-- Follow-up visit dots -->
           <div
             v-for="f in followups"
@@ -417,6 +449,19 @@ function dotTooltip(f: Followup): string {
   white-space: nowrap;
   margin-top: 3px;
   letter-spacing: 0.3px;
+}
+
+/* Boundary label (phase transition date positioned above the boundary) */
+.boundary-label {
+  position: absolute;
+  top: -18px;
+  transform: translateX(-50%);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  z-index: 3;
+  pointer-events: none;
 }
 
 /* ── Month ticks ──────────────────────────────────────────────────── */
